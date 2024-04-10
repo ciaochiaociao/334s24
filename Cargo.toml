@@ -1,3 +1,4 @@
+workspace = { members = ["warmup"] }
 [package]
 name = "bitcoin"
 version = "0.1.0"
