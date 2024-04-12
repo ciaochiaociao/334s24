@@ -1,5 +1,3 @@
-use std::collections::binary_heap;
-
 use ring::digest;
 
 use super::hash::{Hashable, H256};

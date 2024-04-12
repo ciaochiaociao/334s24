@@ -29,7 +29,7 @@ pub fn verify(t: &RawTransaction, public_key: &<Ed25519KeyPair as KeyPair>::Publ
 mod tests {
     use super::*;
     use crate::crypto::key_pair;
-    use log::{info, debug, error};
+    use log::info;
     use std::sync::Once;
 
     static INIT: Once = Once::new();
