@@ -47,10 +47,7 @@ impl MerkleTree {
 
             // Bottom-up construction of the Merkle tree
             let mut next_level: Vec<H256> = Vec::new();
-            // println!("Doing the loop of the level: {}", level_count);
-            // println!("curr_level length: {}", curr_level.len());
             for i in 0 .. curr_level.len() / 2 {
-                // println!("node {} and {}", i * 2, i * 2 + 1);
                 let left = curr_level[i * 2];
                 let right = curr_level[i * 2 + 1];
                 let hash = hash_children(&left, &right);
@@ -58,11 +55,8 @@ impl MerkleTree {
             }
             
             // prepend the nodes of the current level to the front of the array
-            // println!("length of the current level: {}", next_level.len());
-            // println!("length of the array: {}", array.len());
             let mut array2= next_level.clone();
             array2.extend_from_slice(&array.clone());
-            // println!("length of the array2: {}", array2.len());
             array = array2;
 
             curr_level = next_level;
@@ -77,8 +71,6 @@ impl MerkleTree {
     }
 
     pub fn root(&self) -> H256 {
-        println!("array: {:?}", self.array);
-        println!("len(array): {}", self.array.len());
         self.array[0]
     }
 
@@ -88,13 +80,10 @@ impl MerkleTree {
 
         // 2**(level_count - 1) - 1 is the index of the first node in the bottom level
         let mut i = index + 2usize.pow(self.level_count as u32 - 1) - 1;
-        println!("i in the array (for proof index): {}", i);
         let mut j = 0;
         while j < self.level_count - 1 {
 
             // get the sibling node
-            // println!("len(array): {}", self.array.len());
-            println!("j: {}", j);
             if i % 2 == 0 {
                 proof.push(self.array[i - 1]);
             } else {
@@ -265,7 +254,6 @@ mod tests {
             (hex!("bada70a695501195fb5ad950a5a41c02c0f9c449a918937267710a0425151b77")).into(),
             (hex!("c8c37c89fcc6ee7f5e8237d2b7ed8c17640c154f8d7751c774719b2b82040c76")).into(),
         ];
-        println!("proof: {:?}", proof);
         assert!(proof == expected_proof_bottom_up || proof == expected_proof_top_down);
     }
     

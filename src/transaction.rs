@@ -57,9 +57,7 @@ mod tests {
 
         // casting then printing
         // get length of signature
-        let length = signature.as_ref().to_vec().len();
-        println!("Signature Length: {:?}", length);
-        println!("Signature: {:?}", &signature.as_ref().to_vec());
+        let _length = signature.as_ref().to_vec().len();
         assert!(verify(&t, &(key.public_key()), &signature));
     }
 
