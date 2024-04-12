@@ -1,5 +1,5 @@
 use serde::{Serialize,Deserialize};
-use ring::signature::{Ed25519KeyPair, Signature, KeyPair, VerificationAlgorithm, EdDSAParameters, UnparsedPublicKey};
+use ring::signature::{Ed25519KeyPair, Signature, KeyPair, EdDSAParameters, UnparsedPublicKey};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct RawTransaction {
