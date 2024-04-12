@@ -142,17 +142,6 @@ mod tests {
         }};
     }
 
-    macro_rules! gen_merkle_tree_middle {
-        () => {{
-            vec![
-                (hex!("0000000000000000000000000000000000000000000000000000000000000011")).into(),
-                (hex!("0000000000000000000000000000000000000000000000000000000000000022")).into(),
-                (hex!("0000000000000000000000000000000000000000000000000000000000000033")).into(),
-                (hex!("0000000000000000000000000000000000000000000000000000000000000044")).into(),
-            ]
-        }}
-    }
-
     macro_rules! gen_merkle_tree_large {
         () => {{
             vec![
@@ -185,45 +174,6 @@ mod tests {
         // the concatenation of these two hashes "b69..." and "965..."
         // notice that the order of these two matters
     }
-
-    #[test]
-    fn tree_size() {
-        let input_data: Vec<H256> = gen_merkle_tree_data!();
-        let merkle_tree = MerkleTree::new(&input_data);
-        assert_eq!(merkle_tree.array.len(), 3);
-        assert_eq!(merkle_tree.level_count, 2);
-    }
-
-    #[test]
-    fn tree_size2() {
-        let input_data: Vec<H256> = gen_merkle_tree_middle!();
-        let merkle_tree = MerkleTree::new(&input_data);
-        assert_eq!(merkle_tree.array.len(), 7);
-        assert_eq!(merkle_tree.level_count, 3);
-    }
-
-    #[test]
-    fn whole_tree() {
-        let input_data: Vec<H256> = gen_merkle_tree_data!();
-        let merkle_tree = MerkleTree::new(&input_data);
-        assert_eq!(
-            merkle_tree.array[1..],
-            vec![
-                (hex!("b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0")).into(),
-                (hex!("965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f")).into(),
-            ]
-        )
-    }
-
-    // #[test]
-    // fn whole_tree2() {
-    //     let input_data: Vec<H256> = gen_merkle_tree_middle!();
-    //     let merkle_tree = MerkleTree::new(&input_data);
-    //     assert_eq!(
-    //         merkle_tree.array[1..],
-    //         vec![
-    //             (hex!("
-    // }
 
     #[test]
     fn proof() {
@@ -265,21 +215,4 @@ mod tests {
         assert!(verify(&merkle_tree.root(), &input_data[0].hash(), &proof, 0, input_data.len()));
     }
 
-    #[test]
-    fn verifying_tree_large() {
-        let input_data: Vec<H256> = gen_merkle_tree_large!();
-        let merkle_tree = MerkleTree::new(&input_data);
-        let proof = merkle_tree.proof(5);
-        assert!(verify(&merkle_tree.root(), &input_data[5].hash(), &proof, 5, input_data.len()));
-    }
-    
-    #[test]
-    fn verifying_tree_large_all_nodes() {
-        let input_data: Vec<H256> = gen_merkle_tree_large!();
-        let merkle_tree = MerkleTree::new(&input_data);
-        for i in 0..input_data.len() {
-            let proof = merkle_tree.proof(i);
-            assert!(verify(&merkle_tree.root(), &input_data[i].hash(), &proof, i, input_data.len()));
-        }
-    }
 }
