@@ -32,19 +32,15 @@ impl MerkleTree {
             curr_level.push(item.hash());
         }
         let mut level_count = 1;
+
+        // Make sure the number of leaves is a power of 2, if not, duplicate the last leaf until it is.
+        while curr_level.len() & (curr_level.len() - 1) != 0 {
+            duplicate_last_node(&mut curr_level);
+        }
+        assert!(curr_level.len().is_power_of_two());
+
         let mut array: Vec<H256> = curr_level.clone();
-
-
-        // create the upper levels of the tree and prepend the nodes of each level to the front of the array
         while curr_level.len() > 1 {
-            // Whenever a level of the tree has odd number of nodes, duplicate the last node to make the number even:
-            if curr_level.len() % 2 == 1 {
-                duplicate_last_node(&mut curr_level);
-            }
-            assert!(curr_level.len() % 2 == 0); // make sure we now have even number of nodes.
-
-
-
             // Bottom-up construction of the Merkle tree
             let mut next_level: Vec<H256> = Vec::new();
             for i in 0 .. curr_level.len() / 2 {
