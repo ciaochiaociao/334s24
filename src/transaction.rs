@@ -1,6 +1,6 @@
 use serde::{Serialize,Deserialize};
 use ring::signature::{Ed25519KeyPair, Signature, KeyPair, EdDSAParameters, UnparsedPublicKey};
-use crate::crypto::hash::{Hashable};
+use crate::crypto::hash::Hashable;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct RawTransaction {
@@ -29,7 +29,7 @@ pub fn verify(t: &RawTransaction, public_key: &<Ed25519KeyPair as KeyPair>::Publ
 
 use crate::crypto::hash::H256;
 /* Please add the following code snippet into `src/transaction.rs`: */
-impl Hashable for Transaction {
+impl Hashable for RawTransaction {
     fn hash(&self) -> H256 {
         let bytes = bincode::serialize(&self).unwrap();
         ring::digest::digest(&ring::digest::SHA256, &bytes).into()

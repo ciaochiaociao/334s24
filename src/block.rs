@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use crate::crypto::hash::{H256, Hashable};
-use crate::transaction::Transaction;
+use crate::transaction::RawTransaction;
 
 /// The block header
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -15,7 +15,7 @@ pub struct Header {
 /// Transactions contained in a block
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Content {
-    pub transactions: Vec<Transaction>,
+    pub transactions: Vec<RawTransaction>,
 }
 
 /// A block in the blockchain
@@ -49,7 +49,7 @@ impl Hashable for Block {
 impl Block {
     /// Construct the (totally deterministic) genesis block
     pub fn genesis() -> Block {
-        let transactions: Vec<Transaction> = vec![];
+        let transactions: Vec<RawTransaction> = vec![];
         let header = Header {
             parent: Default::default(),
             nonce: 0,
