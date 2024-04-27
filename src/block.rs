@@ -35,7 +35,13 @@ fn default_difficulty() -> [u8; 32] {
     // let mut difficulty = [0u8; 32];
     // difficulty[0] = 1;
     // difficulty
-    unimplemented!()
+    let mut difficulty = [0u8; 32];
+    difficulty[3] = 1;  
+    // hash < 0000010000000000000000000000000000000000000000000000000000000000
+    //  e.g., 000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    // 6 leading zeros in the hexidecimal representation
+    // 3 leading zeros in the byte representation
+    difficulty
 }
 
 impl Hashable for Block {
@@ -66,8 +72,19 @@ impl Block {
 pub mod test {
     use super::*;
     use crate::crypto::hash::H256;
+    use crate::crypto::merkle::MerkleTree;
 
     pub fn generate_random_block(parent: &H256) -> Block {
-        unimplemented!()
+        let transactions: Vec<RawTransaction> = vec![Default::default()];
+        let root = MerkleTree::new(&transactions).root();
+        let header = Header {
+            parent: *parent,
+            nonce: rand::random(),
+            difficulty: default_difficulty().into(),
+            timestamp: rand::random(),
+            merkle_root: root,
+        };
+        let content = Content { transactions };
+        Block { header, content }
     }
 }
