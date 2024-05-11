@@ -9,7 +9,7 @@ pub struct Blockchain {
     // track the length of each block by using HashMap
     hash_to_length: HashMap<H256, u64>,
     // use a **HashMap** in standard crate to store blocks
-    hash_to_block: HashMap<H256, Block>,
+    pub hash_to_block: HashMap<H256, Block>,
 }
 
 impl Blockchain {

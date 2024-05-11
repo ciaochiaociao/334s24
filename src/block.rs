@@ -35,8 +35,11 @@ fn default_difficulty() -> [u8; 32] {
     // let mut difficulty = [0u8; 32];
     // difficulty[0] = 1;
     // difficulty
-    let mut difficulty = [0u8; 32];
-    difficulty[3] = 1;  
+    let mut difficulty = [0xFF; 32];
+    let leading_zeros = 2;
+    for i in 0..leading_zeros {
+        difficulty[i] = 0;
+    }
     // hash < 0000010000000000000000000000000000000000000000000000000000000000
     //  e.g., 000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
     // 6 leading zeros in the hexidecimal representation
