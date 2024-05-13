@@ -1,0 +1,52 @@
+\documentclass[11pt]{article}
+
+\usepackage{hyperref}
+
+% double spacing
+\usepackage{setspace}
+\doublespacing
+
+\begin{document}
+% ELEC\_ENG 334: Fundamentals of Blockchains and Decentralization - 
+% \title{Assignment 3: Mining Rate vs Difficulty}
+% \date{May 3 2024}
+% \author{Chiao-Wei Hsu}
+% \maketitle
+
+% After some time, stop the miner (or the program), count the number of blocks and calculate the mining rate (block per second). Please run experiments such that the mining rate is not too large or too low. 0.01 to 1000 blocks per second is a reasonable range. (If too low, you have to wait for too long. If too high, you may run out of memory.)
+
+\section{Experiment}\label{sec:experiment}
+
+We set the difficulty to 0xFFFF..., 0x00FF..., and 0x0000FF..., and the lambda parameter to 100,000 microseconds. We run the miner for 20 seconds. The results are shown in Table~\ref{tab:difficulty_vs_mining_rate}.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|c|c|}
+        \hline
+        Difficulty & Mining Rate (block per second) \\
+        \hline
+        0xFFFF... & 9.56 \\
+        0x00FF... & 9.64 \\
+        0x0000FF... & 7.12 \\
+        \hline
+    \end{tabular}
+    \caption{Difficulty vs Mining Rate. The lambda parameter is 100,000, and the duration of the experiment is 20 seconds, and the difficulty is set to 0xFFFF..., 0x00FF..., and 0x0000FF...}
+    \label{tab:difficulty_vs_mining_rate}
+
+\end{table}
+
+The mining rate is almost the same for the first two difficulties, and it is lower for the last difficulty. This is expected because the difficulty is higher for the last difficulty, and it takes more time to find a valid block. However, for the first two difficulties, the mining rate is almost the same, which is unexpected. We expected the mining rate to be lower for the higher difficulty. This may be due to the time difference to find a valid block is not significant for these two difficulties and even less than the time to wait for mining a new block. Therefore, the mining rate is almost the same for these two difficulties, and the difference might be due to the randomness of the mining process.
+% You also need to write the function to get the number of blocks if you don't have one. You can do it in your way. It can be in *src/blockchain.rs*, *src/miner.rs*, and/or *src/api/mod.rs*, etc. 
+
+% ## Report
+
+% Please submit a report in pdf. Please use double spacing between paragraphs and use 11 pt font size. Also please keep it within one page.
+
+% In the first paragraph, please state clearly your experiment settings. It should include the difficulty, the lambda parameter, and the duration of your experiment.
+
+% The second paragraph is a table of difficulty vs mining rate. There should be at least 3 different difficulty values. The table should have a one-sentence caption.
+
+% The third paragraph should give a 1-2 sentence analysis of the results in the table. Especially if you encounter any unexpected result please point it out.
+
+
+\end{document}

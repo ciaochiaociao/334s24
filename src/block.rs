@@ -36,7 +36,7 @@ fn default_difficulty() -> [u8; 32] {
     // difficulty[0] = 1;
     // difficulty
     let mut difficulty = [0xFF; 32];
-    let leading_zeros = 2;
+    let leading_zeros = 1;
     for i in 0..leading_zeros {
         difficulty[i] = 0;
     }

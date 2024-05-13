@@ -1,10 +1,10 @@
-use crate::blockchain;
 use crate::network::server::Handle as ServerHandle;
-use crate::blockchain::Blockchain;
+use crate::blockchain::{BlockOrigin, Blockchain};
 use std::sync::{Arc, Mutex};
 use crate::transaction::RawTransaction;
 use crate::block::{Block, Header, Content};
 use crate::crypto::hash::Hashable;
+use crate::network::message::Message::NewBlockHashes;
 
 use log::info;
 
@@ -98,6 +98,35 @@ impl Context {
                     info!("Mined {} blocks in {} seconds, rate is {} blocks/second",
                         self.total_blocks_mined, seconds_spent, mining_rate)
                 }
+                // print the size of the blockchain:
+                let blockchain = self.blockchain.lock().unwrap();
+                // serializing it and checking the serialized vector's length.
+                let serialized = bincode::serialize(&*blockchain).unwrap();
+                info!("Blockchain size: {} bytes", serialized.len());
+
+                // print the average size of the blocks
+                let mut total_size = 0;
+                for block in blockchain.hash_to_block.values() {
+                    total_size += bincode::serialize(&block).unwrap().len();
+                }
+                let average_size = total_size as f64 / blockchain.hash_to_block.len() as f64;
+                info!("Average block size: {} bytes", average_size);
+
+                // number of blocks in the blockchain
+                info!("Number of blocks in the blockchain: {}", blockchain.hash_to_block.len());
+                // Average delay time of the received blocks
+                let mut total_delay = 0;
+                let mut total_received = 0;
+                for (hash, origin) in blockchain.hash_to_origin.iter() {
+                    if let BlockOrigin::Received{delay_ms} = origin {
+                        total_delay += delay_ms;
+                        total_received += 1;
+                    }
+                }
+                if total_received > 0 {
+                    let average_delay = total_delay as f64 / total_received as f64;
+                    info!("Average delay of received blocks: {} ms", average_delay);
+                }
             }
             ControlSignal::Start(i) => {
                 info!("Miner starting in continuous mode with lambda {}", i);
@@ -112,7 +141,6 @@ impl Context {
 
     fn miner_loop(&mut self) {
         // main mining loop
-        let start_time = time::SystemTime::now();
         loop {
             // check and react to control signals
             match self.operating_state {
@@ -142,6 +170,10 @@ impl Context {
 
             // TODO: actual mining
             if let OperatingState::Run(i) = self.operating_state {
+                if i != 0 {
+                    let interval = time::Duration::from_micros(i as u64);
+                    thread::sleep(interval);
+                }
                 let mut blockchain = self.blockchain.lock().unwrap();
                 // Next, to build a block, you need to gather a block's fields. In a block header, the fields are gathered as follows,
                 // 1. parent - use *blockchain.tip()*
@@ -154,55 +186,44 @@ impl Context {
                 let difficulty = parent_block.header.difficulty;
                 // 4. merkle root - compute it by creating a merkle tree from the content.
                 let merkle_root = parent_block.header.merkle_root;
-                drop(blockchain);
 
-                loop {
-                    let mut blockchain = self.blockchain.lock().unwrap();
-                    // 5. nonce - generate a random nonce (use *rand* crate) in every iteration, or increment nonce (say, increment by 1) in every iteration. P.S. Do you think there is any difference in terms of the probability of solving the puzzle?
-                    let nonce = rand::random::<u32>();
-        
-                    // As for the block content, you can put arbitrary content, since in this step we don't have memory pool yet. You can put an empty vector, or some random transactions.
-                    let transactions: Vec<RawTransaction> = vec![];
-                    let header = Header {
-                        parent,
-                        nonce,
-                        difficulty,
-                        timestamp,
-                        merkle_root,
-                    };
-                    let content = Content {
-                        transactions,
-                    };
-                    let new_block = Block {
-                        header,
-                        content,
-                    };
-        
-                    // After you have all these fields and build a block, just check whether the proof-of-work hash puzzle is satisfied by
-                    // ```
-                    // block.hash() <= difficulty
-                    // ```
-                    // Notice that the above code is conceptually the same as *H(nonce|block) < threshold* in lectures.
-                    // If it is satisfied, the block is successfully generated. Congratulations! Just insert it into blockchain, and keep on mining for another block.
-        
-                    if new_block.hash() <= difficulty {
-                        
-                        blockchain.insert(&new_block);
-                        info!("Block mined: {:?}", new_block);
-                        self.total_blocks_mined += 1;
-                        break;
-                    }
-                }
-                if i != 0 {
-                    let interval = time::Duration::from_micros(i as u64);
-                    thread::sleep(interval);
+                // 5. nonce - generate a random nonce (use *rand* crate) in every iteration, or increment nonce (say, increment by 1) in every iteration. P.S. Do you think there is any difference in terms of the probability of solving the puzzle?
+                let nonce = rand::random::<u32>();
+    
+                // As for the block content, you can put arbitrary content, since in this step we don't have memory pool yet. You can put an empty vector, or some random transactions.
+                let transactions: Vec<RawTransaction> = vec![];
+                let header = Header {
+                    parent,
+                    nonce,
+                    difficulty,
+                    timestamp,
+                    merkle_root,
+                };
+                let content = Content {
+                    transactions,
+                };
+                let new_block = Block {
+                    header,
+                    content,
+                };
+    
+                // After you have all these fields and build a block, just check whether the proof-of-work hash puzzle is satisfied by
+                // ```
+                // block.hash() <= difficulty
+                // ```
+                // Notice that the above code is conceptually the same as *H(nonce|block) < threshold* in lectures.
+                // If it is satisfied, the block is successfully generated. Congratulations! Just insert it into blockchain, and keep on mining for another block.
+    
+                if new_block.hash() <= difficulty {
+                    
+                    blockchain.insert(&new_block);
+                    // info!("Block mined: {:?}", new_block);
+                    self.total_blocks_mined += 1;
+                    // println!("Blockchain length: {}", blockchain.length_of_longest_chain());
+                    // println!("# Hashs: {}", blockchain.hash_to_block.len());
+                    self.server.broadcast(NewBlockHashes(vec![new_block.hash()]));
                 }
             }
-            info!("Length of blockchain: {}", self.blockchain.lock().unwrap().hash_to_block.len());
-            let end_time = time::SystemTime::now();
-            let elapsed = end_time.duration_since(start_time).unwrap();
-            info!("Elapsed time: {:?}", elapsed);
-            info!("Mining rate: {:?}", self.blockchain.lock().unwrap().hash_to_block.len() as f64 / elapsed.as_secs_f64());
         }
     }
 }
