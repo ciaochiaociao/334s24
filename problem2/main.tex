@@ -1,0 +1,151 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{cleveref}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{svg}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\newtheorem{definition}{Definition}
+% Define the Julia language style
+\lstdefinelanguage{Julia}%
+  {morekeywords={abstract,break,case,catch,const,continue,do,else,elseif,%
+      end,export,false,for,function,immutable,import,importall,if,in,%
+      macro,module,otherwise,quote,return,switch,true,try,type,typealias,%
+      using,while},%
+   sensitive=true,%
+   alsoother={\$},%
+   morecomment=[l]\#,%
+   morecomment=[n]{\#=}{=\#},%
+   morestring=[s]{"}{"},%
+   morestring=[m]{'}{'},%
+}[keywords,comments,strings]
+
+% Set the style for Julia
+\lstset{%
+    language         = Julia,
+    basicstyle       = \footnotesize,
+    keywordstyle     = \color{blue},
+    stringstyle      = \color{green},
+    commentstyle     = \color{red},
+    showstringspaces = false,
+    breaklines=true,
+    numbers = left,
+}
+
+
+\title{ELEC\_ENG COMP\_ENG 334 Fundamentals of Blockchains and Decentralization Assignment on Probability Theory and Stochastic Processes}
+\author{Chiao-Wei Hsu}
+\date{May 18, 2024}
+
+\begin{document}
+\maketitle
+
+\section{Problem 1 (10 points)}
+
+Using the data in https://www.blockchain.com/charts to an external site or elsewhere, estimate the following quantities, in the past month on the Bitcoin network:
+
+\begin{enumerate}[label=(\alph*)]
+    \item the average size of a transaction, in bytes.
+        \paragraph*{My Answer:} 1.629 MB per block / 3,795 transcations per block = 429 bytes per transaction on average in the past month.
+    \item the average size of a block in MB.
+        \paragraph*{My Answer:} 1.629 MB per block on average in the past month.
+    \item the throughput in transactions per second.
+        \paragraph*{My Answer:} 5.418 transactions per second on average in the past month.
+    \item Compare the result in (a)-(c) to the throughput of a system like Visa.
+        \paragraph*{My Answer:} According to the official Visa can handle 24,000 transactions per second. Bitcoin can handle 5.418 transactions per second. Visa is about 4,430 times faster than Bitcoin.
+    \item Roughly how many transactions are waiting to be confirmed on average?
+        \paragraph*{My Answer:} 115,224 transactions on average in the past month.
+    \item Any changes in the charts that could be explained by the recent price fluctuations? Provide a short description of how you derived the estimates and state any assumptions you have made.
+        \paragraph*{My Answer:} It is observed that when the price of Bitcoin increases, the number of transactions waiting to be confirmed increases. This is because more people are interested in Bitcoin and more transactions are made and broadcasted to the network. For the other quantities, the price fluctuations do not have a significant impact, as the size of a transaction, the size of a block, and the throughput are primarily determined by the protocol and the network.
+\end{enumerate}
+
+\section{Problem 2 (20 points)}
+
+This question is about the proof-of-stake protocol and its safety properties.  As we discussed, to produce a block, all that matters is that the following inequality is satisfied:
+
+\begin{equation}
+    \text{VRF}( \text{previous hash}, \text{timestamp}, \text{secret key} ) < \text{threshold}.
+\end{equation}
+
+A valid new block includes the left hand side of equation.  The block can be verified using only the public key, namely
+
+\begin{equation}
+    \text{Verify}( \text{public key}, \text{previous hash}, \text{timestamp}, \text{VRF}( \text{previous hash}, \text{timestamp}, \text{secret key} ) ) = \text{TRUE}
+\end{equation}
+
+if the public key and secret key are indeed a pair, and FALSE otherwise.
+
+Because it takes little computation to make a proof-of-stake block (also referred to as nothing-at-stake (NaS)), an adversary can easily grow a full NaS tree as the one illustrated on page 7 (slide 13) of week7\_1.pdf. This is the private-mining attack on the PoS system.
+
+In this problem you are asked to simulate the growth of the private random NaS tree by the adversary over time.  Because timestamp is discrete, it suffices to use a discrete time axis divided into slots.  Suppose timestamp increases by 1 millisecond at a time (the minimum time slot).  Suppose also for every value of ``timestamp'', equation (*) holds with probability 0.001.  This implies that, the first child of a given block is found in 1,000 time slots on average, which is tantamount to 1 second.  Suppose the genesis block G is prepared at time 0 and then the private-mining attack begins.  The NaS tree has a single node G at time 0.  As timestamp progresses, a first child of G is added to the NaS tree, then there are two blocks, so the adversary can grind on both blocks simultaneously; a child of one of those two blocks will be found next, then the adversary can grind on three blocks simultaneously; and so on.  It is important to note that, if the tree has n nodes, the number of new blocks found in the next 1-millisecond slot is a binomial random variable with parameter (n, 0.001).  For example, if the tree grows to 5,000 nodes, on average 5 new blocks are added in the next 1 millisecond.
+
+Note that if you simply keep all blocks in memory, you quickly run out of memory and time (in a minute you have about 1018 blocks).  Since the question is about the size and height only, it suffices to store the counts of blocks at all existing heights.
+ 
+
+\begin{enumerate}[label=(\alph*)]
+    \item Use a computer to simulate the growth of the random NaS tree in a sensible way.  Plot the tree when it grows to more than 100 nodes for the first time.
+        \paragraph*{My Answer:}
+        \lstinputlisting{pos_nas_plot_tree.py}
+        \begin{figure}[h]
+            \centering
+            \includegraphics*[width=0.5\textwidth]{NaS_tree.png}
+            \caption{The NaS tree when it grows to more than 100 nodes for the first time.}
+        \end{figure}
+    \item Use a computer to simulate the growth of such a tree till the 1 minute mark (60,000 slots in total).  Be precise if you can; otherwise come up with a good estimate.  Plot the growth in size (the total number of blocks) and the growth in height (the depth of the deepest blocks) as a function of time.  This is the best shown using two graphs, with the height/size as the y-axis and timestamp as the x-axis.  Use log-plots if it makes sense.
+        \paragraph*{My Answer:}
+        \lstinputlisting{PoS_NaS_tree_growth.py}
+        \begin{figure}[h]
+            \centering
+            \includegraphics*[width=0.8\textwidth]{tree_growth.png}
+            \caption{The growth of the NaS tree till the 1 minute mark.}
+        \end{figure}
+\end{enumerate}
+
+\section{Simulation of safety violation and probability. (20 points)}
+
+In this problem we let the units of time be minutes. We refer to blocks mined by the adversary as A-blocks and blocks mined by honest miners as H-blocks. A-blocks are mined according to a Poisson point process with rate a blocks/minute; H-blocks are mined according to a Poisson point process with rate h blocks/minute.
+
+In class we also introduced the pacer process:
+
+\begin{definition}[Pacer]
+    We say the genesis block is the 0-th pacer. After the genesis block, each pacer is the first H-block mined at least \(\Delta\) time after the previous pacer.
+\end{definition}
+
+We assume 1/4 of the total mining power is adversarial. Also, assume a=0.25, h=0.75, and \(\Delta\)=0.4. Consider confirmation by depth k=6.
+
+\begin{enumerate}[label=(\alph*)]
+    \item In Assignment 3, you have simulated Poisson processes.Simulate and plot the H-block process for a period of 200 minutes starting from time 0. Each H-block mining time should be represented by a red dot on the time axis. Mark all pacers in the same plot, e.g., using a '+' on the dot. You can use any language you like, submit both your code and the plot.
+        \paragraph*{My Answer:}
+        \lstinputlisting{pacers.py}
+        \begin{figure}[h]
+            \centering
+            \includegraphics*[width=0.5\textwidth]{pacers1.png}
+            \caption{The H-block process and pacers for a period of 200 minutes starting from time 0. The red dots represent the H-block mining time, and the blue '+' represents the pacers.}
+        \end{figure}
+        \begin{figure}[h]
+            \centering
+            \includegraphics*[width=0.5\textwidth]{pacers2.png}
+            \caption{A Zoom-in view of the H-block process and pacers for a period of 200 minutes starting from time 0. This shows that one H-block that is too close to the previous pacer is not a pacer.}
+        \end{figure}
+        
+    \item Estimate the average inter-arrival time of pacers based on your simulation in part (a).
+        \paragraph*{My Answer:} The average inter-arrival time of pacers is 1.748 minutes.
+    \item Suppose the adversary adopts the private mining attack and delays all H-blocks maximally. Simulate also the A-block mining process. Plot the mining times as dots using a different color in the same graph as the pacer process. Plot one case where the safety of height 1 is violated within 200 minutes, and another case where the safety of height 1 is not violated within 200 minutes.
+        \paragraph*{My Answer:}
+        \lstinputlisting{violation.py}
+        
+    \item Simulate 1000 instances of the mining processes and calculate the fraction of instances where the safety of height 1 is violated within the first 200 minutes. This is your estimate of the probability of safety violation. Write a paragraph about your experiment and your numerical result.
+        \paragraph*{My Answer:}
+        The probability of safety violation is 0.481. The simulation results show that the safety of height 1 is violated in 481 out of 1000 instances within the first 200 minutes. This is consistent with the theoretical result that the probability of safety violation is 0.5.  
+        \lstinputlisting{safety_violation.py}
+\end{enumerate}
+
+\end{document}
