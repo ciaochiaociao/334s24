@@ -9,12 +9,18 @@ pub mod crypto;
 pub mod miner;
 pub mod network;
 pub mod transaction;
+pub mod address;
+pub mod mempool;
+pub mod transaction_generator;
 
+use address::get_deterministic_keypair;
 use clap::clap_app;
 use crossbeam::channel;
+use crypto::key_pair;
 use log::{error, info};
 use api::Server as ApiServer;
 use network::{server, worker};
+use transaction_generator::TransactionGenerator;
 use std::net;
 use std::process;
 use std::thread;
@@ -77,17 +83,27 @@ fn main() {
         });
     // start the miner
     let blockchain = Arc::new(Mutex::new(Blockchain::new()));
+    let mempool = Arc::new(Mutex::new(mempool::Mempool::new()));
     let worker_ctx = worker::new(
         p2p_workers,
         msg_rx,
         &server,
         blockchain.clone(),
+        mempool.clone(),
     );
     worker_ctx.start();
 
+    // start the transaction generator
+    let controlled_key_pair = get_deterministic_keypair(0);  // get one account from ICO (from nonce 0 to 9)
+    let transaction_generator = TransactionGenerator::new(
+        &server, &mempool, &blockchain, controlled_key_pair
+    );
+
+    transaction_generator.start();
+
     // start the miner
     let (miner_ctx, miner) = miner::new(
-        &server, &blockchain
+        &server, &blockchain, &mempool
     );
     miner_ctx.start();
 

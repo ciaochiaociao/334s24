@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 use crate::crypto::hash::{H256, Hashable};
 use crate::transaction::RawTransaction;
+use crate::transaction::SignedTransaction as Transaction;
 
 /// The block header
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -15,7 +16,7 @@ pub struct Header {
 /// Transactions contained in a block
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Content {
-    pub transactions: Vec<RawTransaction>,
+    pub transactions: Vec<Transaction>,
 }
 
 /// A block in the blockchain
@@ -58,7 +59,7 @@ impl Hashable for Block {
 impl Block {
     /// Construct the (totally deterministic) genesis block
     pub fn genesis() -> Block {
-        let transactions: Vec<RawTransaction> = vec![];
+        let transactions: Vec<Transaction> = vec![];
         let header = Header {
             parent: Default::default(),
             nonce: 0,
@@ -78,7 +79,7 @@ pub mod test {
     use crate::crypto::merkle::MerkleTree;
 
     pub fn generate_random_block(parent: &H256) -> Block {
-        let transactions: Vec<RawTransaction> = vec![Default::default()];
+        let transactions: Vec<Transaction> = vec![Default::default()];
         let root = MerkleTree::new(&transactions).root();
         let header = Header {
             parent: *parent,

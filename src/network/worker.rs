@@ -1,9 +1,12 @@
 use super::message::Message;
 use super::peer;
+use crate::address::H160;
 use crate::network::server::Handle as ServerHandle;
 use crate::blockchain::{Blockchain, BlockOrigin};
 use crate::block::Block;
-use crate::crypto::hash::Hashable;
+use crate::crypto::hash::{Hashable, H256};
+use crate::transaction::SignedTransaction as Transaction;
+use crate::mempool::Mempool;
 use std::sync::{Arc, Mutex};
 use crossbeam::channel;
 use log::{debug, warn};
@@ -16,6 +19,7 @@ pub struct Context {
     num_worker: usize,
     server: ServerHandle,
     blockchain: Arc<Mutex<Blockchain>>,
+    mempool: Arc<Mutex<Mempool>>,
 }
 
 pub fn new(
@@ -23,12 +27,14 @@ pub fn new(
     msg_src: channel::Receiver<(Vec<u8>, peer::Handle)>,
     server: &ServerHandle,
     blockchain: Arc<Mutex<Blockchain>>,
+    mempool: Arc<Mutex<Mempool>>,
 ) -> Context {
     Context {
         msg_chan: msg_src,
         num_worker: num_worker,
         server: server.clone(),
         blockchain: blockchain,
+        mempool: mempool,
     }
 }
 
@@ -62,6 +68,11 @@ impl Context {
             // assert that the parent block is already in the blockchain
             assert!(self.blockchain.lock().unwrap().contains_block(&orphan.header.parent));
             self.blockchain.lock().unwrap().insert(&orphan);
+
+            // remove the doubly-spent transactions found by changed state from mempool
+            let hashes: Vec<H256> = orphan.content.transactions.iter().map(|tx| tx.hash()).collect();
+            self.mempool.lock().unwrap().remove_transactions(&hashes);
+
             self.handle_orphans(orphan);  // this orphan might also be a parent to some orphans, so we need to check recursively
         }
     }
@@ -155,6 +166,10 @@ impl Context {
                         let parent_hash = block.header.parent;
                         if self.blockchain.lock().unwrap().contains_block(&parent_hash) {
                             self.blockchain.lock().unwrap().insert(&block);  // insert the block into your blockchain
+                            
+                            // remove the doubly-spent transactions found by changed state from mempool
+                            let hashes: Vec<H256> = block.content.transactions.iter().map(|tx| tx.hash()).collect();
+                            self.mempool.lock().unwrap().remove_transactions(&hashes);
                             // 3.3. Orphan block handler: this block might be a parent to some orphans
                             self.handle_orphans(block.clone());
                         } else {
@@ -171,7 +186,90 @@ impl Context {
                         self.server.broadcast(Message::NewBlockHashes(new_hashes.clone()));  // propagate the new block hashes to other peers
                     }
                 }
+                Message::NewTransactionHashes(hashes) => {
+                    // Received **NewTransactionHashes** message from other peers.
+                    // This message will either originate from the miner when it successfully mines a block or be received from another peer relaying the transactions.
 
+                    // Upon receiving **NewTransactionHashes**, if the hashes are not already in blockchain, you need to ask for them by sending **GetTransactions**.
+                    debug!("Message::NewTransactionHashes: {:?}", hashes);
+                    let mut new_hashes = Vec::new();
+                    for hash in hashes {
+                        if !self.mempool.lock().unwrap().contains_transaction(&hash) {
+                            new_hashes.push(hash);
+                        }
+                    }
+                    if !new_hashes.is_empty() {
+                        self.server.broadcast(Message::GetTransactions(new_hashes.clone()));
+                    }
+                }
+
+                Message::GetTransactions(hashes) => {
+                    // Received **GetTransactions** message from other peers.
+                    // Upon receiving **GetTransactions**, if the hashes are in blockchain, you can get these transactions and send them by **Transactions** message.
+                    debug!("Message::GetTransactions: {:?}", hashes);
+                    let transactions: Vec<Transaction> = self
+                        .mempool
+                        .lock()
+                        .unwrap()
+                        .get_transactions(&hashes);
+                    if !transactions.is_empty() {
+                        self.server.broadcast(Message::Transactions(transactions));
+                    }
+                }
+
+                Message::Transactions(transactions) => {
+                    // Received transactions from other peers.
+                    //- Check if each transaction is already in the mempool. If so, skip that transaction; otherwise, check if that transaction is valid before inserting it into the mempool. 
+                    //- Finally, you need to broadcast **NewTransactionHashes** message when receiving new transactions in **Transactions** message. **NewTransactionHashes** message should contain hashes of transactions newly received and accepted.
+                    debug!("Message::Transactions");
+                    let mut new_hashes = Vec::new();
+                    for transaction in transactions {
+                        if self.mempool.lock().unwrap().contains_transaction(&transaction.hash()) {
+                            continue;
+                        }
+                        // check if the transaction is valid before inserting it into blockchain
+                        // 4.1. Signature validity check
+                        // - Verify the signature of the transaction using the public key of the sender. If the signature is valid, the transaction is valid.
+                        // - If the signature is invalid, the transaction is corrupted or dishonest. You should ignore the transaction instead of adding it to your blockchain.
+                        if !transaction.verify_signature() {
+                            warn!("Invalid transaction detected: {:?}", transaction);
+                            continue;
+                        }
+
+                        // 4.2 In the account-based model, check if the public key matches the owner's address of the withdrawing account. (This step needs struct **State**, see below.)
+                        // - If the public key does not match the owner's address, the transaction is corrupted or dishonest. You should ignore the transaction instead of adding it to your blockchain.
+                        // - If the public key matches the owner's address, the transaction is valid.
+                        if transaction.raw.from_addr != H160::from_pubkey(&transaction.pub_key) {
+                            warn!("Invalid transaction detected: {:?} with from_addr: {:?} and pub_key: {:?}", transaction, transaction.raw.from_addr, H160::from_pubkey(&transaction.pub_key));
+                            continue;
+                        }
+                        // 4.3 Double spend checks:
+                        // - In the account-based model, check if the balance is enough and the suggested account nonce is equal to one plus the account nonce. This check also needs **State** (see below).
+                        
+                        let sender = H160::from_pubkey(&transaction.pub_key);
+                        let block_hash = self.blockchain.lock().unwrap().tip();  // tip of the blockchain
+                        // get the sender's nonce and balance
+                        let blockchain = self.blockchain.lock().unwrap();
+                        let (sender_account_nonce, sender_account_balance) = blockchain.hash_to_state.get(&block_hash).unwrap().get(&sender).unwrap();
+                        // check if the nonce (sender) is correct
+                        if sender_account_nonce + 1 != transaction.raw.nonce {
+                            warn!("Invalid transaction detected: {:?} with nonce: {:?} and sender_account_nonce: {:?}", transaction, transaction.raw.nonce, sender_account_nonce);
+                            continue;
+                        }
+                        // check if the balance is enough
+                        if sender_account_balance < &transaction.raw.value {
+                            warn!("Invalid transaction detected: {:?} with value: {:?} and sender_account_balance: {:?}", transaction, transaction.raw.value, sender_account_balance);
+                            continue;
+                        }
+
+                        new_hashes.push(transaction.hash().clone());
+                        self.mempool.lock().unwrap().insert(transaction.clone());
+                    }
+                    // propagate valid transactions
+                    if !new_hashes.is_empty() {
+                        self.server.broadcast(Message::NewTransactionHashes(new_hashes.clone()));  // propagate the new transaction hashes to other peers
+                    }
+                }
             }
         }
     }

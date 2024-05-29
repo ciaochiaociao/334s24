@@ -1,9 +1,10 @@
+use crate::mempool::Mempool;
 use crate::network::server::Handle as ServerHandle;
 use crate::blockchain::{BlockOrigin, Blockchain};
 use std::sync::{Arc, Mutex};
-use crate::transaction::RawTransaction;
+use crate::transaction::SignedTransaction as Transaction;
 use crate::block::{Block, Header, Content};
-use crate::crypto::hash::Hashable;
+use crate::crypto::hash::{Hashable, H256};
 use crate::network::message::Message::NewBlockHashes;
 
 use log::info;
@@ -30,6 +31,7 @@ pub struct Context {
     operating_state: OperatingState,
     server: ServerHandle,
     blockchain: Arc<Mutex<Blockchain>>,
+    mempool: Arc<Mutex<Mempool>>,
     start_time: Option<SystemTime>,
     total_blocks_mined: u64,
     // memory_pool: Arc<Mutex<Vec<Mempool>>>,
@@ -42,7 +44,7 @@ pub struct Handle {
 }
 
 pub fn new(
-    server: &ServerHandle, blockchain: &Arc<Mutex<Blockchain>>
+    server: &ServerHandle, blockchain: &Arc<Mutex<Blockchain>>, mempool: &Arc<Mutex<Mempool>>,
 ) -> (Context, Handle) {
     let (signal_chan_sender, signal_chan_receiver) = unbounded();
 
@@ -51,6 +53,7 @@ pub fn new(
         operating_state: OperatingState::Paused,
         server: server.clone(),
         blockchain: blockchain.clone(),
+        mempool: mempool.clone(),
         start_time: None,
         total_blocks_mined: 0,
     };
@@ -191,7 +194,13 @@ impl Context {
                 let nonce = rand::random::<u32>();
     
                 // As for the block content, you can put arbitrary content, since in this step we don't have memory pool yet. You can put an empty vector, or some random transactions.
-                let transactions: Vec<RawTransaction> = vec![];
+
+                // use the mempool to get a limited number of transactions
+                let max_txs_per_block = 5;
+                if max_txs_per_block > self.mempool.lock().unwrap().len() {
+                    continue;
+                }
+                let transactions: Vec<Transaction> = self.mempool.lock().unwrap().get_n_transactions(max_txs_per_block);
                 let header = Header {
                     parent,
                     nonce,
@@ -200,7 +209,7 @@ impl Context {
                     merkle_root,
                 };
                 let content = Content {
-                    transactions,
+                    transactions: transactions.clone(),
                 };
                 let new_block = Block {
                     header,
@@ -217,6 +226,11 @@ impl Context {
                 if new_block.hash() <= difficulty {
                     
                     blockchain.insert(&new_block);
+
+                    // remove transactions from mempool
+                    let hashes: Vec<H256> = transactions.iter().map(|tx| tx.hash()).collect();
+                    self.mempool.lock().unwrap().remove_transactions(&hashes);
+
                     // info!("Block mined: {:?}", new_block);
                     self.total_blocks_mined += 1;
                     // println!("Blockchain length: {}", blockchain.length_of_longest_chain());

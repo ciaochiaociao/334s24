@@ -1,16 +1,47 @@
 use serde::{Serialize,Deserialize};
 use ring::signature::{Ed25519KeyPair, Signature, KeyPair, EdDSAParameters, UnparsedPublicKey};
 use crate::crypto::hash::Hashable;
+use crate::address::H160;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct RawTransaction {
-    pub input: u32,
-    pub output: u32,
+    pub from_addr: H160,
+    pub to_addr: H160,
+    pub value: u64,
+    pub nonce: u32,
 }
 
+/// A signed transaction
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SignedTransaction {
-    pub raw: RawTransaction,
-    pub signature: Signature,
+    // to avoid name confusion, we recommend renaming `Transaction` to `RawTransaction`:
+    pub raw: RawTransaction,  
+    pub pub_key: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+/* Please add the following code snippet into `src/transaction.rs`: */
+impl Hashable for SignedTransaction {
+    fn hash(&self) -> H256 {
+        let bytes = bincode::serialize(&self).unwrap();
+        ring::digest::digest(&ring::digest::SHA256, &bytes).into()
+    }
+}
+
+impl SignedTransaction {
+    /// Create a new transaction from a raw transaction and a key pair
+    pub fn from_raw(raw: RawTransaction, key: &Ed25519KeyPair) -> SignedTransaction {
+        let pub_key = key.public_key().as_ref().to_vec();
+        let signature = sign(&raw, key).as_ref().to_vec();
+        SignedTransaction { raw, pub_key, signature }
+    }
+
+    /// Verify the signature of this transaction
+    pub fn verify_signature(&self) -> bool {
+        let serialized_raw = bincode::serialize(&self.raw).unwrap();
+        let public_key = ring::signature::UnparsedPublicKey::new(
+            &ring::signature::ED25519, &self.pub_key[..]);
+        public_key.verify(&serialized_raw, self.signature.as_ref()).is_ok()
+    }
 }
 
 /// Create digital signature of a transaction
@@ -44,8 +75,10 @@ mod tests {
 
     pub fn generate_random_transaction() -> RawTransaction {
         RawTransaction {
-            input: rand::random::<u32>(),
-            output: rand::random::<u32>(),
+            from_addr: H160::from_pubkey(&key_pair::random().public_key().as_ref()),
+            to_addr: H160::from_pubkey(&key_pair::random().public_key().as_ref()),
+            value: rand::random::<u64>(),
+            nonce: rand::random::<u32>(),
         }
     }
 

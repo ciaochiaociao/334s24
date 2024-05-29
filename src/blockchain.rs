@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
+use crate::address::{get_deterministic_keypair, H160};
 use crate::block::Block;
 use crate::crypto::hash::{Hashable, H256};
+use log::debug;
+use ring::signature::KeyPair;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -9,6 +12,32 @@ use serde::Serialize;
 pub enum BlockOrigin {
     Mined,
     Received{delay_ms: u128},
+}
+
+#[derive(Clone, Serialize)]
+pub struct State {
+    map: HashMap<H160, (u32, u64)>
+}
+
+impl State {
+    /// Initial coin offering; generate an initial state.
+    fn ico() -> Self {
+        let mut state = HashMap::new();
+        // give the i-th account 1000 * (10 - i) coins, i = 0, 1, 2, ..., 9
+        for i in 0..10 {
+            let pair = get_deterministic_keypair(i);
+            let address = H160::from_pubkey(pair.public_key().as_ref());
+            let balance: u64 = 1000 * ((10 - i) as u64);
+            let nonce: u32 = 0;
+            state.insert(address, (nonce, balance));
+        }
+        State { map: state }
+    }
+
+    // Get the state of an account
+    pub fn get(&self, address: &H160) -> Option<&(u32, u64)> {
+        self.map.get(address)
+    }
 }
 
 #[derive(Serialize)]
@@ -20,6 +49,7 @@ pub struct Blockchain {
     pub hash_to_block: HashMap<H256, Block>,
     orphan_buffer: HashMap<H256, Vec<Block>>,
     pub hash_to_origin: HashMap<H256, BlockOrigin>,
+    pub hash_to_state: HashMap<H256, State>,
 }
 
 impl Blockchain {
@@ -30,14 +60,18 @@ impl Blockchain {
         let mut hash_to_block = HashMap::new();
         // track the length of each block
         let mut hash_to_length = HashMap::new();
+        let mut hash_to_state = HashMap::new();
         hash_to_length.insert(genesis_hash, 0);
         hash_to_block.insert(genesis_hash, genesis);
+        hash_to_state.insert(genesis_hash, State::ico());
+
         Blockchain {
             tip: genesis_hash,
             hash_to_length: hash_to_length,
             hash_to_block: hash_to_block,
             orphan_buffer: HashMap::new(),
             hash_to_origin: HashMap::new(),
+            hash_to_state: hash_to_state,
         }
     }
 
@@ -53,11 +87,41 @@ impl Blockchain {
         if length > *self.hash_to_length.get(&self.tip).unwrap() {
             self.tip = block_hash;
         }
+
+        // update the state
+        // update the account nonce and balance
+        // do double spending check here?
+        let new_state = State {
+            map: {
+                let mut state = self.hash_to_state.get(&parent_hash).unwrap().map.clone();
+                for tx in &block.content.transactions {
+                    let sender = H160::from_pubkey(&tx.pub_key);
+                    print!("Processing transaction from: {:?}", sender);
+                    print!("Transaction: {:?}", tx);
+                    assert!(sender == tx.raw.from_addr);
+                    let (sender_nonce, sender_balance) = state.get(&sender).unwrap_or(&(0, 0));  // get the sender's nonce and balance, if not found, initialize with 0
+                    assert!(sender_nonce + 1 == tx.raw.nonce);  // check the nonce
+                    assert!(sender_balance >= &tx.raw.value);  // check the balance
+                    state.insert(sender, (sender_nonce + 1, sender_balance - tx.raw.value));
+                    let receiver = tx.raw.to_addr;
+                    let (receiver_nonce, receiver_balance) = state.get(&receiver).unwrap_or(&(0, 0));
+                    state.insert(receiver, (receiver_nonce + 1, receiver_balance + tx.raw.value));
+                }
+                state
+            }
+        };
+
+        self.hash_to_state.insert(block_hash, new_state);
     }
 
     /// Get the last block's hash of the longest chain
     pub fn tip(&self) -> H256 {
         self.tip
+    }
+
+    /// Get the latest state
+    pub fn state(&self) -> State {
+        self.hash_to_state.get(&self.tip).unwrap().clone()
     }
 
     /// Get the last block's hash of the longest chain
@@ -127,6 +191,14 @@ impl Blockchain {
     pub fn remove_orphans(&mut self, hash: &H256) {
         self.orphan_buffer.remove(hash);
     }
+
+    // pub fn contains_transaction(&self, hash: &H256) -> bool {
+    //     self.hash_to_block.contains_key(hash)
+    // }
+
+    // pub fn get_transactions(&self, hashes: &[H256]) -> Vec<Block> {
+    //     hashes.iter().filter_map(|hash| self.get_block(hash)).collect()
+    // }
 
 }
 
