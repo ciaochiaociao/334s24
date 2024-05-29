@@ -17,6 +17,7 @@ use address::get_deterministic_keypair;
 use clap::clap_app;
 use crossbeam::channel;
 use crypto::key_pair;
+use log::debug;
 use log::{error, info};
 use api::Server as ApiServer;
 use network::{server, worker};
@@ -99,6 +100,7 @@ fn main() {
         &server, &mempool, &blockchain, controlled_key_pair
     );
 
+    debug!("Transaction generator started");
     transaction_generator.start();
 
     // start the miner

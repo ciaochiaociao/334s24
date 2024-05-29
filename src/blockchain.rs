@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::address::{get_deterministic_keypair, H160};
 use crate::block::Block;
 use crate::crypto::hash::{Hashable, H256};
-use log::debug;
+use log::{debug, warn};
 use ring::signature::KeyPair;
 use serde::Serialize;
 
@@ -14,7 +14,7 @@ pub enum BlockOrigin {
     Received{delay_ms: u128},
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Debug)]
 pub struct State {
     map: HashMap<H160, (u32, u64)>
 }
@@ -90,22 +90,28 @@ impl Blockchain {
 
         // update the state
         // update the account nonce and balance
-        // do double spending check here?
+        // TODO: do double spending check here?
         let new_state = State {
             map: {
                 let mut state = self.hash_to_state.get(&parent_hash).unwrap().map.clone();
                 for tx in &block.content.transactions {
                     let sender = H160::from_pubkey(&tx.pub_key);
-                    print!("Processing transaction from: {:?}", sender);
-                    print!("Transaction: {:?}", tx);
+                    // println!("Processing transaction from: {:?}", sender);
+                    // println!("Transaction: {:?}", tx);
                     assert!(sender == tx.raw.from_addr);
                     let (sender_nonce, sender_balance) = state.get(&sender).unwrap_or(&(0, 0));  // get the sender's nonce and balance, if not found, initialize with 0
-                    assert!(sender_nonce + 1 == tx.raw.nonce);  // check the nonce
+                    if sender_nonce + 1 != tx.raw.nonce {
+                        // check the nonce
+                        warn!("Transaction nonce should be 1 more than the sender's nonce: {:?} vs {:?}", tx.raw.nonce, sender_nonce);
+                        // assert!(sender_nonce + 1 == tx.raw.nonce);  // check the nonce
+                        continue
+                    }
                     assert!(sender_balance >= &tx.raw.value);  // check the balance
+                    // debug!("wired amount: {:?}", tx.raw.value);
                     state.insert(sender, (sender_nonce + 1, sender_balance - tx.raw.value));
                     let receiver = tx.raw.to_addr;
                     let (receiver_nonce, receiver_balance) = state.get(&receiver).unwrap_or(&(0, 0));
-                    state.insert(receiver, (receiver_nonce + 1, receiver_balance + tx.raw.value));
+                    state.insert(receiver, (*receiver_nonce, receiver_balance + tx.raw.value));
                 }
                 state
             }
@@ -138,9 +144,19 @@ impl Blockchain {
         blocks.iter().map(|block| block.hash()).collect()
     }
 
+    /// Get the number of blocks in the whole blockchain
+    pub fn len(&self) -> usize {
+        self.hash_to_block.len()
+    }
+
     /// Get the length of the longest chain
     pub fn length_of_longest_chain(&self) -> u64 {
         *self.hash_to_length.get(&self.tip).unwrap()
+    }
+
+    /// Get the length of a block
+    pub fn get_length(&self, hash: &H256) -> u64 {
+        *self.hash_to_length.get(hash).unwrap()
     }
 
     /// Get the block by hash

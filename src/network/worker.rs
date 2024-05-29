@@ -181,6 +181,15 @@ impl Context {
                         // set the delay time for each block
                         let origin_received = BlockOrigin::Received { delay_ms: delay };
                         self.blockchain.lock().unwrap().hash_to_origin.insert(block.hash(), origin_received);
+                        
+                        
+                        if self.blockchain.lock().unwrap().tip() == block.hash() {
+                            // if the block is added to the tip of the longest chain:
+                            debug!("Block inserted into blockchain (at tip) at height: {:?} with hash: {:?}", self.blockchain.lock().unwrap().get_length(&block.hash()), block.hash());
+                        }
+                        debug!("# blocks in blockchain: {:?}", self.blockchain.lock().unwrap().len());
+                        debug!("Height of the tip of the blockchain: {:?}", self.blockchain.lock().unwrap().length_of_longest_chain());
+
                     }
                     if !new_hashes.is_empty() {
                         self.server.broadcast(Message::NewBlockHashes(new_hashes.clone()));  // propagate the new block hashes to other peers
@@ -188,9 +197,9 @@ impl Context {
                 }
                 Message::NewTransactionHashes(hashes) => {
                     // Received **NewTransactionHashes** message from other peers.
-                    // This message will either originate from the miner when it successfully mines a block or be received from another peer relaying the transactions.
+                    // similar to NewBlockHashes. Such messages are initiated by the transaction generator and relayed by the workers. When a worker receives this message, it should request from the sender the transactions not yet in the mempool.
 
-                    // Upon receiving **NewTransactionHashes**, if the hashes are not already in blockchain, you need to ask for them by sending **GetTransactions**.
+                    // Upon receiving **NewTransactionHashes**, if the hashes are not already in mempool, you need to ask for them by sending **GetTransactions**.
                     debug!("Message::NewTransactionHashes: {:?}", hashes);
                     let mut new_hashes = Vec::new();
                     for hash in hashes {
@@ -205,7 +214,7 @@ impl Context {
 
                 Message::GetTransactions(hashes) => {
                     // Received **GetTransactions** message from other peers.
-                    // Upon receiving **GetTransactions**, if the hashes are in blockchain, you can get these transactions and send them by **Transactions** message.
+                    // Upon receiving **GetTransactions**, if the hashes are in mempool, you can get these transactions and send them by **Transactions** message.
                     debug!("Message::GetTransactions: {:?}", hashes);
                     let transactions: Vec<Transaction> = self
                         .mempool
@@ -232,7 +241,8 @@ impl Context {
                         // - Verify the signature of the transaction using the public key of the sender. If the signature is valid, the transaction is valid.
                         // - If the signature is invalid, the transaction is corrupted or dishonest. You should ignore the transaction instead of adding it to your blockchain.
                         if !transaction.verify_signature() {
-                            warn!("Invalid transaction detected: {:?}", transaction);
+                            // warn!("Invalid transaction detected: {:?}", transaction);
+                            warn!("Invalid transaction detected: Failed to verify signature");
                             continue;
                         }
 
@@ -240,7 +250,7 @@ impl Context {
                         // - If the public key does not match the owner's address, the transaction is corrupted or dishonest. You should ignore the transaction instead of adding it to your blockchain.
                         // - If the public key matches the owner's address, the transaction is valid.
                         if transaction.raw.from_addr != H160::from_pubkey(&transaction.pub_key) {
-                            warn!("Invalid transaction detected: {:?} with from_addr: {:?} and pub_key: {:?}", transaction, transaction.raw.from_addr, H160::from_pubkey(&transaction.pub_key));
+                            warn!("Invalid transaction detected: Failed to match from_addr: {:?} with address of pub_key: {:?}", transaction.raw.from_addr, H160::from_pubkey(&transaction.pub_key));
                             continue;
                         }
                         // 4.3 Double spend checks:
@@ -253,17 +263,19 @@ impl Context {
                         let (sender_account_nonce, sender_account_balance) = blockchain.hash_to_state.get(&block_hash).unwrap().get(&sender).unwrap();
                         // check if the nonce (sender) is correct
                         if sender_account_nonce + 1 != transaction.raw.nonce {
-                            warn!("Invalid transaction detected: {:?} with nonce: {:?} and sender_account_nonce: {:?}", transaction, transaction.raw.nonce, sender_account_nonce);
+                            warn!("P2P Node Received An Invalid transaction detected: tx's nonce: {:?} should be 1 more than sender_account_nonce: {:?}", transaction.raw.nonce, sender_account_nonce);
                             continue;
                         }
                         // check if the balance is enough
                         if sender_account_balance < &transaction.raw.value {
-                            warn!("Invalid transaction detected: {:?} with value: {:?} and sender_account_balance: {:?}", transaction, transaction.raw.value, sender_account_balance);
+                            warn!("Invalid transaction detected: Sender account doesn't have enough balance with value: {:?} and sender_account_balance: {:?}", transaction.raw.value, sender_account_balance);
                             continue;
                         }
 
                         new_hashes.push(transaction.hash().clone());
                         self.mempool.lock().unwrap().insert(transaction.clone());
+                        debug!("Transaction inserted into mempool: {:?}", transaction);
+                        debug!("# Hashes in mempool: {:?}", self.mempool.lock().unwrap().len());
                     }
                     // propagate valid transactions
                     if !new_hashes.is_empty() {

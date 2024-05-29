@@ -1,3 +1,4 @@
+use crate::crypto::merkle::MerkleTree;
 use crate::mempool::Mempool;
 use crate::network::server::Handle as ServerHandle;
 use crate::blockchain::{BlockOrigin, Blockchain};
@@ -7,7 +8,7 @@ use crate::block::{Block, Header, Content};
 use crate::crypto::hash::{Hashable, H256};
 use crate::network::message::Message::NewBlockHashes;
 
-use log::info;
+use log::{debug, info};
 
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use std::time::{self, SystemTime};
@@ -178,9 +179,27 @@ impl Context {
                     thread::sleep(interval);
                 }
                 let mut blockchain = self.blockchain.lock().unwrap();
-                // Next, to build a block, you need to gather a block's fields. In a block header, the fields are gathered as follows,
                 // 1. parent - use *blockchain.tip()*
                 let parent = blockchain.tip();
+                
+                // use the mempool to get a limited number of transactions
+                let max_txs_per_block = 1;
+                if max_txs_per_block > self.mempool.lock().unwrap().len() {
+                    continue;
+                }
+                // debug!("Mining triggered with # of transactions in mempool: {}", self.mempool.lock().unwrap().len());
+                let state = blockchain.hash_to_state.get(&parent).unwrap();
+                let all_valid_transactions = self.mempool.lock().unwrap().get_valid_transactions(state);
+                // debug!("# of valid transactions in mempool: {}", all_valid_transactions.len());
+                // std::thread::sleep(std::time::Duration::from_secs(5)); // pause for 5 seconds
+
+                if max_txs_per_block > all_valid_transactions.len() {
+                    continue;
+                }
+                // debug!("Mining triggered with # of valid transactions in mempool: {}", all_valid_transactions.len());
+
+                let transactions: Vec<Transaction> = all_valid_transactions.iter().take(max_txs_per_block).cloned().collect();
+                // Next, to build a block, you need to gather a block's fields. In a block header, the fields are gathered as follows,
                 // 2. timestamp - use `SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()` from `std::time`. This expression is pretty self-explanatory, except `UNIX_EPOCH` refers to 1970-01-01 00:00:00 UTC, and `millis` is short for _milliseconds_.
                 // You can refer [this document](https://doc.rust-lang.org/std/time/constant.UNIX_EPOCH.html) for more information.
                 let timestamp = time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_millis();
@@ -188,19 +207,13 @@ impl Context {
                 let parent_block = blockchain.hash_to_block.get(&parent).unwrap();
                 let difficulty = parent_block.header.difficulty;
                 // 4. merkle root - compute it by creating a merkle tree from the content.
-                let merkle_root = parent_block.header.merkle_root;
+                let merkle_root = MerkleTree::new(&transactions).root();
 
                 // 5. nonce - generate a random nonce (use *rand* crate) in every iteration, or increment nonce (say, increment by 1) in every iteration. P.S. Do you think there is any difference in terms of the probability of solving the puzzle?
                 let nonce = rand::random::<u32>();
     
                 // As for the block content, you can put arbitrary content, since in this step we don't have memory pool yet. You can put an empty vector, or some random transactions.
 
-                // use the mempool to get a limited number of transactions
-                let max_txs_per_block = 5;
-                if max_txs_per_block > self.mempool.lock().unwrap().len() {
-                    continue;
-                }
-                let transactions: Vec<Transaction> = self.mempool.lock().unwrap().get_n_transactions(max_txs_per_block);
                 let header = Header {
                     parent,
                     nonce,
@@ -224,17 +237,32 @@ impl Context {
                 // If it is satisfied, the block is successfully generated. Congratulations! Just insert it into blockchain, and keep on mining for another block.
     
                 if new_block.hash() <= difficulty {
-                    
+
                     blockchain.insert(&new_block);
 
                     // remove transactions from mempool
                     let hashes: Vec<H256> = transactions.iter().map(|tx| tx.hash()).collect();
                     self.mempool.lock().unwrap().remove_transactions(&hashes);
 
-                    // info!("Block mined: {:?}", new_block);
+                    // remove invalid transactions from mempool
+                    let state = &blockchain.state();
+                    let invalid_hashes: Vec<H256> = self.mempool.lock().unwrap().get_invalid_transactions(state).iter().map(|tx| tx.hash()).collect();
+                    // // nonce of each account in the mempool
+                    // for transaction in self.mempool.lock().unwrap().hash_to_transaction.values() {
+                    //     debug!("nonce of account: {:?} in mempool: {:?}", transaction.raw.from_addr, transaction.raw.nonce);
+                    //     // the latest state
+                    //     debug!("The latest state of account: {:?}", &blockchain.state().get(&transaction.raw.from_addr));
+                    // }
+                    self.mempool.lock().unwrap().remove_transactions(&invalid_hashes);
+
+                    info!("Block mined: parent - {:?}, hash - {:?}, nonce - {:?}, merkle_root - {:?}, # txs - {:?}", new_block.header.parent, new_block.hash(), new_block.header.nonce, new_block.header.merkle_root, new_block.content.transactions.len());
                     self.total_blocks_mined += 1;
-                    // println!("Blockchain length: {}", blockchain.length_of_longest_chain());
-                    // println!("# Hashs: {}", blockchain.hash_to_block.len());
+                    info!("Blockchain height: {}", blockchain.length_of_longest_chain());
+                    info!("# Hashs: {}", blockchain.hash_to_block.len());
+                    info!("The latest state: {:?}", &blockchain.state());
+                    debug!("Removing {:?} of invalid transactions from mempool based on updated state", invalid_hashes.len());
+                    // sleep for 5 secs
+                    // std::thread::sleep(std::time::Duration::from_secs(5));
                     self.server.broadcast(NewBlockHashes(vec![new_block.hash()]));
                 }
             }
