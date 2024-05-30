@@ -1,0 +1,70 @@
+1. v
+
+#### Add those checks when processing _blocks_:
+
+- When receiving and processing a _block_, also check transactions inside it.
+
+
+2. v
+
+Change from RawTransaction to SignedTransaction
+
+3. v
+Double spending check on both blockchain.insert() and before mempool.insert()
+ - use the parent block in blockchain.insert() v
+ - use the tip of the chain before adding to mempool v
+
+4. v
+Transaction Mempool update: remove the doubly-spent transactions found by changed state
+After implementing state transition, ensure that the transactions in the mempool are valid with respect to the new state, this is necessary since some transactions may classify as double-spent after the state update, and you may need to remove those transactions.
+  state changed: in blockchain.insert()
+  remove txs from mempool inside where blockchain.insert() is called
+  => inside miner_loop() in miner v
+  => upon receiving Block message in worker v
+  => inside handle_orphans() v
+
+5. v
+random transaction generator
+
+6. v
+send the transactions messages from random generator
+
+7. v
+
+**Mempool** will also be used by the miner to include transactions in the blocks being mined. The miner will add transactions in the mempool to the block till it reaches the block size limit. You are free to choose the size limit on the blocks. On processing a new block (which is not an orphan or stale), remove corresponding transactions from the mempool. (You probably want to modify the function `miner_loop` in `miner.rs` to reflect this.)
+
+                let transactions: Vec<Transaction> = vec![];  // TODO
+
+8. v
+
+fill up the block with the transactions from mempool until it reaches the block size limit
+
+9. v
+
+init the random transactions generation
+
+10. v
+
+periodical traces of a working miner and mempool on each node
+printing a one-line trace when a new block is mined/received, or some selected transactions are received
+ - miner, new block is mined => mine function
+    - or check where does the mining function returns every time => worker function upon receiving NewBlock message v
+ - new block is received => worker function upon receiving NewBlock message v
+ - mempool, selected transactions are received => worker function upon receiving Transactions message v
+11. 
+
+the growth of the blockchain on each node, and that all nodes agree with each other (e.g., showing the hash and height of the tip, and the total count of the blocks) 
+ - logging v
+
+12.
+
+the evolution of the ledger state on each node, and that all nodes agree with each other (e.g., showing the balances of certain accounts);
+
+13.
+
+occasional invalid transactions are properly rejected and do not crash the program (i.e. the generators should take a small chance to generate invalid transactions).
+  - better logging v
+
+14. 
+
+Q: Add doubly spending check on random transaction geneartion?
